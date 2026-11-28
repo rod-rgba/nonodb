@@ -2483,11 +2483,12 @@ pub fn compact_overlays(
 /// Counts documents matching a filter. The filter uses the normal matcher.
 pub fn count(rtxn: &RoTxn<'_>, env: &Env, name: &str, filter: &Value) -> Result<usize> {
     let mut count = 0;
-    for doc in all_docs(rtxn, env, name)? {
+    for_each(rtxn, env, name, |doc| {
         if crate::query::matcher::matches(&doc, filter) {
             count += 1;
         }
-    }
+        Ok(())
+    })?;
     Ok(count)
 }
 
