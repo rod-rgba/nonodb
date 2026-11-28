@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use nonodb_core::columnar::Settings as ColumnarSettings;
 use nonodb_core::timeseries;
-use nonodb_core::Store;
+use nonodb_core::{CollectionProfile, Store};
 use serde_json::{json, Value};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if target.collections()?.iter().any(|name| name == target_coll) {
         return Err(format!("target collection {target_coll} already exists").into());
     }
-    target.create_columnar_collection(target_coll, &ColumnarSettings::default())?;
+    let profile = std::env::var("TARGET_PROFILE").unwrap_or_else(|_| "columnar".to_string());
+    if profile == "standard" {
+        target.create_collection(target_coll, CollectionProfile::Standard)?;
+    } else if profile == "columnar" {
+        target.create_columnar_collection(target_coll, &ColumnarSettings::default())?;
+    } else {
+        return Err(format!("unknown TARGET_PROFILE={profile}").into());
+    }
     let target_coll_ref = target.collection(target_coll)?;
 
     let rtxn = source.read_txn()?;

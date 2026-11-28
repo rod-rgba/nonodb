@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use nonodb_core::{columnar, Error, Store};
+use nonodb_core::{columnar, Error, FindQuery, Store};
 use serde_json::{json, Value};
 
 fn pct(values: &mut [Duration], p: f64) -> Duration {
@@ -38,19 +38,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let count = coll.count(&json!({}))?;
     println!("count {{}}: {count} in {:?}", started.elapsed());
 
-    // Do not call `find` without an index here: the general columnar find path
-    // materializes the whole collection and is intentionally exercised only in
-    // the smaller parity suites. Point reads use a bounded streaming sample.
-    let txn = store.read_txn()?;
-    let mut sample = Vec::with_capacity(10_000);
-    let _ = columnar::for_each(&txn, store.env(), name, |doc| {
-        sample.push(doc);
-        if sample.len() >= 10_000 {
-            return Err(Error::Query("__sample_complete".into()));
-        }
-        Ok(())
-    });
-    drop(txn);
+    // Use a bounded sample for point reads. The standard profile can answer a
+    // limited find directly; columnar uses the streaming bucket iterator so it
+    // does not materialize the whole collection.
+    let profile = std::env::var("TARGET_PROFILE").unwrap_or_else(|_| "columnar".to_string());
+    let sample = if profile == "standard" {
+        coll.find(&FindQuery {
+            filter: json!({}),
+            limit: Some(10_000),
+            ..Default::default()
+        })?
+    } else {
+        let txn = store.read_txn()?;
+        let mut sample = Vec::with_capacity(10_000);
+        let _ = columnar::for_each(&txn, store.env(), name, |doc| {
+            sample.push(doc);
+            if sample.len() >= 10_000 {
+                return Err(Error::Query("__sample_complete".into()));
+            }
+            Ok(())
+        });
+        drop(txn);
+        sample
+    };
     let ids: Vec<String> = sample
         .iter()
         .filter_map(|doc| {

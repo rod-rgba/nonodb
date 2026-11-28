@@ -2482,6 +2482,9 @@ pub fn compact_overlays(
 
 /// Counts documents matching a filter. The filter uses the normal matcher.
 pub fn count(rtxn: &RoTxn<'_>, env: &Env, name: &str, filter: &Value) -> Result<usize> {
+    if filter.is_null() || filter.as_object().is_some_and(|object| object.is_empty()) {
+        return Ok(stats(rtxn, env, name)?.rows as usize);
+    }
     let mut count = 0;
     for_each(rtxn, env, name, |doc| {
         if crate::query::matcher::matches(&doc, filter) {
