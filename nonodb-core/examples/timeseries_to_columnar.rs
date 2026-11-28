@@ -114,6 +114,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     target.force_sync()?;
+    if std::env::var("COMPACT_AFTER").ok().as_deref() == Some("1") {
+        let compact_started = Instant::now();
+        let compacted = target.compact_columnar(target_coll)?;
+        eprintln!(
+            "compacted {compacted} rows in {:.1}s",
+            compact_started.elapsed().as_secs_f64()
+        );
+    }
+    if let Ok(path) = std::env::var("COPY_AFTER") {
+        target.copy_to_file(
+            std::path::Path::new(&path),
+            nonodb_core::heed::CompactionOption::Enabled,
+        )?;
+        let bytes = std::fs::metadata(&path)?.len();
+        eprintln!("copied compact database to {path}: {bytes} bytes");
+    }
     let elapsed = started.elapsed().as_secs_f64();
     let txn = target.read_txn()?;
     let stats = target_coll_ref.storage_stats(&txn)?;
